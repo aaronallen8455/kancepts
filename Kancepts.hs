@@ -68,17 +68,19 @@ class (Category (Dom ftag), Category (Cod ftag)) => Functor ftag where
 
   (%) :: ftag -> Dom ftag a b -> Cod ftag (ftag :% a) (ftag :% b)
 
-data g :.% f =
+-- Functor composition
+data g :.: f =
   Comp g f
 
-instance (Functor f, Functor g, Cod f ~ Dom g) => Functor (g :.% f) where
-  type Dom (g :.% f) = Dom f
-  type Cod (g :.% f) = Cod g
+instance (Functor f, Functor g, Cod f ~ Dom g) => Functor (g :.: f) where
+  type Dom (g :.: f) = Dom f
+  type Cod (g :.: f) = Cod g
 
-  type (g :.% f) :% a = g :% (f :% a)
+  type (g :.: f) :% a = g :% (f :% a)
 
   Comp g f % m = g % (f % m)
 
+-- Identity functor
 data Identity (c :: Type -> Type -> Type) = Identity
 
 instance Category c => Functor (Identity c) where
@@ -102,6 +104,7 @@ data Nat d c f g where
 
 type f ~> g = (Cod f ~ Cod g, Dom f ~ Dom g) => Nat (Dom f) (Cod f) f g
 
+-- Vertical composition of natural transformations forms a category
 vertComp :: Nat d c g h -> Nat d c f g -> Nat d c f h
 vertComp (Nat _ h n1) (Nat f _ n2) = Nat f h $ \o -> n1 o . n2 o
 
@@ -111,15 +114,15 @@ instance Category (Nat d c) where
   (.) = vertComp
 
 whiskerLeft :: (Functor h, Dom h ~ e, Cod h ~ d)
-            => Nat d c f g -> h -> Nat e c (f :.% h) (g :.% h)
+            => Nat d c f g -> h -> Nat e c (f :.: h) (g :.: h)
 whiskerLeft (Nat f g c) h = Nat (Comp f h) (Comp g h) $ \o -> c $ h % o
 
 whiskerRight :: (Functor h, Cod h ~ e, Dom h ~ c)
-             => Nat d c f g -> h -> Nat d e (h :.% f) (h :.% g)
+             => Nat d c f g -> h -> Nat d e (h :.: f) (h :.: g)
 whiskerRight (Nat f g c) h = Nat (Comp h f) (Comp h g) $ \o -> h % c o
 
 -- Horizontal composition also forms a category but we can't express it here
-horizComp :: Nat c e h i -> Nat d c f g -> Nat d e (h :.% f) (i :.% g)
+horizComp :: Nat c e h i -> Nat d c f g -> Nat d e (h :.: f) (i :.: g)
 horizComp n1@(Nat h _ _) n2@(Nat _ g _) =
   whiskerLeft n1 g . whiskerRight n2 h
 
@@ -127,29 +130,30 @@ horizComp n1@(Nat h _ _) n2@(Nat _ g _) =
 -- Kan Extensions
 --------------------------------------------------------------------------------
 
--- Universal property of left kan extension
+-- Universal property of left kan extensions. Needs to be a newtype to avoid
+-- impredicative polymorphism errors.
 newtype LanUP f k lan =
   LanUP (forall g. Functor g
-      => f ~> (g :.% k)
+      => f ~> (g :.: k)
       -> lan ~> g
         )
 
 data LeftKanExt k f lan where
   Lan :: lan
-      -> f ~> (lan :.% k)
+      -> f ~> (lan :.: k)
       -> LanUP f k lan
       -> LeftKanExt k f lan
 
--- Universal property of right kan extension
+-- Universal property of right kan extensions
 newtype RanUP f k ran =
   RanUP (forall g. Functor g
-      => (g :.% k) ~> f
+      => (g :.: k) ~> f
       -> g ~> ran
         )
 
 data RightKanExt k f ran where
   Ran :: ran
-      -> (ran :.% k) ~> f
+      -> (ran :.: k) ~> f
       -> RanUP f k ran
       -> RightKanExt k f ran
 
@@ -158,7 +162,7 @@ data RightKanExt k f ran where
 --------------------------------------------------------------------------------
 
 -- The left kan extension of a functor F : C -> D along the unique functor
--- ! : C -> 1 is the colimit of F in D, each existing if only the other does.
+-- ! : C -> 1 is the colimit of F in D, each existing iff the other does.
 
 type ConstOne :: (Type -> Type -> Type) -> Type
 data ConstOne c = ConstOne
@@ -170,12 +174,12 @@ instance Category c => Functor (ConstOne c) where
   ConstOne % _ = One
 
 colimit :: colimit
-        -> Nat (Dom f) (Cod f) f (colimit :.% ConstOne (Dom f))
+        -> Nat (Dom f) (Cod f) f (colimit :.: ConstOne (Dom f))
         -> LanUP f (ConstOne (Dom f)) colimit
         -> LeftKanExt (ConstOne (Dom f)) f colimit
 colimit = Lan
 
--- The colimit of 2 in Set is a coproduct, Either in Hask
+-- The colimit of 2 in Set is the coproduct Either in Hask
 
 data TwoToHask = TwoToHask
 
@@ -198,20 +202,21 @@ instance Functor Coproduct where
 coproduct :: LeftKanExt (ConstOne Two) TwoToHask Coproduct
 coproduct = colimit Coproduct eta sigma
   where
-    eta :: Nat Two (->) TwoToHask (Coproduct :.% ConstOne Two)
+    eta :: Nat Two (->) TwoToHask (Coproduct :.: ConstOne Two)
     eta = Nat TwoToHask (Comp Coproduct ConstOne) $ \case
       A -> Left
       B -> Right
 
     sigma :: LanUP TwoToHask (ConstOne Two) Coproduct
     sigma = LanUP $ \case
-      Nat TwoToHask (Comp g ConstOne) c -> Nat Coproduct g $ \case
-        One -> either (c A) (c B)
+      Nat TwoToHask (Comp g ConstOne) c ->
+        Nat Coproduct g $ \case
+          One -> either (c A) (c B)
 
 -- Likewise, the right kan extension defines the limit
 
 limit :: limit
-      -> Nat (Dom f) (Cod f) (limit :.% ConstOne (Dom f)) f
+      -> Nat (Dom f) (Cod f) (limit :.: ConstOne (Dom f)) f
       -> RanUP f (ConstOne (Dom f)) limit
       -> RightKanExt (ConstOne (Dom f)) f limit
 limit = Ran
@@ -228,7 +233,7 @@ instance Functor Product where
 product :: RightKanExt (ConstOne Two) TwoToHask Product
 product = limit Product mu delta
   where
-    mu :: Nat Two (->) (Product :.% ConstOne Two) TwoToHask
+    mu :: Nat Two (->) (Product :.: ConstOne Two) TwoToHask
     mu = Nat (Comp Product ConstOne) TwoToHask $ \two (a, b) ->
       case two of
         A -> a
@@ -236,5 +241,6 @@ product = limit Product mu delta
 
     delta :: RanUP TwoToHask (ConstOne Two) Product
     delta = RanUP $ \case
-      Nat (Comp g ConstOne) TwoToHask c -> Nat g Product $ \One z ->
-        (c A z, c B z)
+      Nat (Comp g ConstOne) TwoToHask c ->
+        Nat g Product $ \One z ->
+          (c A z, c B z)
