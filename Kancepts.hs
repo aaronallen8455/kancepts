@@ -17,7 +17,6 @@ import           Prelude hiding (Functor, (.))
 -- Category
 --------------------------------------------------------------------------------
 
-type Category :: (k -> k -> Type) -> Constraint
 class Category cat where
   src :: cat a b -> Obj cat a
   tgt :: cat a b -> Obj cat b
@@ -56,6 +55,18 @@ instance Category (->) where
   tgt _ = id
   f . g = \x -> f (g x)
 
+-- The category of categories. Morphisms are functors
+type Cat :: (Type -> Type -> Type) -> (Type -> Type -> Type) -> Type
+data Cat a b where
+  Cat :: (Functor ftag, Dom ftag ~ a, Cod ftag ~ b)
+      => ftag
+      -> Cat a b
+
+instance Category Cat where
+  src (Cat f) = Cat Identity
+  tgt (Cat f) = Cat Identity
+  Cat f . Cat g = Cat (Comp f g)
+
 --------------------------------------------------------------------------------
 -- Functor
 --------------------------------------------------------------------------------
@@ -66,7 +77,9 @@ class (Category (Dom ftag), Category (Cod ftag)) => Functor ftag where
 
   type (:%) ftag a :: Type
 
-  (%) :: ftag -> Dom ftag a b -> Cod ftag (ftag :% a) (ftag :% b)
+  (%) :: ftag
+      -> Dom ftag a b
+      -> Cod ftag (ftag :% a) (ftag :% b)
 
 -- Functor composition
 data g :.: f =
@@ -90,6 +103,20 @@ instance Category c => Functor (Identity c) where
   type Identity c :% a = a
 
   Identity % m = m
+
+-- Functor pre-composition
+data Precomp e c d where
+  Precomp :: (Functor k, Dom k ~ c, Cod k ~ d)
+          => k
+          -> Precomp e c d
+
+--instance (Category e, Category c, Category d) => Functor (Precomp e c d) where
+--  type Dom (Precomp e c d) = Nat c e
+--  type Cod (Precomp e c d) = Nat d e
+--
+--  type Precomp e c d :% a = a
+--
+--  Precomp % m = _ -- whiskerLeft m f
 
 --------------------------------------------------------------------------------
 -- Natural Transformation
@@ -125,6 +152,17 @@ whiskerRight (Nat f g c) h = Nat (Comp h f) (Comp h g) $ \o -> h % c o
 horizComp :: Nat c e h i -> Nat d c f g -> Nat d e (h :.: f) (i :.: g)
 horizComp n1@(Nat h _ _) n2@(Nat _ g _) =
   whiskerLeft n1 g . whiskerRight n2 h
+
+--------------------------------------------------------------------------------
+-- Adjunction
+--------------------------------------------------------------------------------
+
+data Adjunction f u where
+  Adjunction :: (Functor f, Functor u, Dom f ~ c, Cod f ~ d, Dom u ~ d, Cod u ~ c)
+             => f -> u
+             -> Nat c c (Identity c) (u :.: f) -- eta
+             -> Nat d d (f :.: u) (Identity d) -- epsilon
+             -> Adjunction f u
 
 --------------------------------------------------------------------------------
 -- Kan Extensions
@@ -244,3 +282,7 @@ product = limit Product mu delta
       Nat (Comp g ConstOne) TwoToHask c ->
         Nat g Product $ \One z ->
           (c A z, c B z)
+
+-- If, for a fixed K : C -> D and E, the left and right kan extensions of any
+-- functor F : C -> E along K exist, then these define left and right adjoints
+-- to the pre-composition functor K* : E^D -> E^C
