@@ -105,18 +105,19 @@ instance Category c => Functor (Identity c) where
   Identity % m = m
 
 -- Functor pre-composition
-data Precomp e c d where
-  Precomp :: (Functor k, Dom k ~ c, Cod k ~ d)
+data Precomp e d c k where
+  Precomp :: (Functor k, Dom k ~ d, Cod k ~ c)
           => k
-          -> Precomp e c d
+          -> Precomp e d c k
 
---instance (Category e, Category c, Category d) => Functor (Precomp e c d) where
---  type Dom (Precomp e c d) = Nat c e
---  type Cod (Precomp e c d) = Nat d e
---
---  type Precomp e c d :% a = a
---
---  Precomp % m = _ -- whiskerLeft m f
+instance Functor (Precomp (e :: Type -> Type -> Type) d c k) where
+
+  type Dom (Precomp e d c k) = Nat c e
+  type Cod (Precomp e d c k) = Nat d e
+
+  type Precomp e d c k :% a = a :.: k
+
+  Precomp k % m = whiskerLeft m k
 
 --------------------------------------------------------------------------------
 -- Natural Transformation
@@ -286,3 +287,30 @@ product = limit Product mu delta
 -- If, for a fixed K : C -> D and E, the left and right kan extensions of any
 -- functor F : C -> E along K exist, then these define left and right adjoints
 -- to the pre-composition functor K* : E^D -> E^C
+
+--data LeftKanExt k f lan where
+--  Lan :: lan
+--      -> f ~> (lan :.: k)
+--      -> LanUP f k lan
+--      -> LeftKanExt k f lan
+
+newtype LanK k lan = LanK (forall f. LeftKanExt k f lan)
+
+--instance Functor (LanK k lan) where
+--  Dom (LanK k lan) = 
+
+--precomp :: LeftKanExt k f lan
+--        -> Adjunction lan (Precomp () () () k)
+
+--data Adjunction f u where
+--  Adjunction :: (Functor f, Functor u, Dom f ~ c, Cod f ~ d, Dom u ~ d, Cod u ~ c)
+--             => f -> u
+--             -> Nat c c (Identity c) (u :.: f) -- eta
+--             -> Nat d d (f :.: u) (Identity d) -- epsilon
+--             -> Adjunction f u
+--
+---- Functor pre-composition
+--data Precomp e d c k where
+--  Precomp :: (Functor k, Dom k ~ d, Cod k ~ c)
+--          => k
+--          -> Precomp e d c k
