@@ -294,10 +294,17 @@ product = limit Product mu delta
 --      -> LanUP f k lan
 --      -> LeftKanExt k f lan
 
-newtype LanK k lan = LanK (forall f. LeftKanExt k f lan)
+newtype LanK k (e :: Type -> Type -> Type) toLan
+  = LanK (forall f. f -> LeftKanExt k f (toLan f))
 
---instance Functor (LanK k lan) where
---  Dom (LanK k lan) = 
+instance Functor (LanK k e toLan) where
+  type Dom (LanK k e toLan) = Nat (Dom k) e
+  type Cod (LanK k e toLan) = Nat (Cod k) e
+
+  type LanK k e toLan :% f = toLan f
+
+  LanK mkLan % f = case mkLan f of
+                     Lan lan nat up -> _
 
 --precomp :: LeftKanExt k f lan
 --        -> Adjunction lan (Precomp () () () k)
