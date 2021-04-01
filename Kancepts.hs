@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -105,17 +106,17 @@ instance Category c => Functor (Identity c) where
   Identity % m = m
 
 -- Functor pre-composition
-data Precomp e d c k where
-  Precomp :: (Functor k, Dom k ~ d, Cod k ~ c)
+data Precomp e k where
+  Precomp :: Functor k
           => k
-          -> Precomp e d c k
+          -> Precomp e k
 
-instance Functor (Precomp (e :: Type -> Type -> Type) d c k) where
+instance Functor (Precomp (e :: Type -> Type -> Type) k) where
 
-  type Dom (Precomp e d c k) = Nat c e
-  type Cod (Precomp e d c k) = Nat d e
+  type Dom (Precomp e k) = Nat (Cod k) e
+  type Cod (Precomp e k) = Nat (Dom k) e
 
-  type Precomp e d c k :% a = a :.: k
+  type Precomp e k :% a = a :.: k
 
   Precomp k % m = whiskerLeft m k
 
@@ -290,9 +291,19 @@ product = limit Product mu delta
 -- functor F : C -> E along K exist, then these define left and right adjoints
 -- to the pre-composition functor K* : E^D -> E^C
 
+-- Given a functor K : A -> B, if for any functor F : A -> E we know how to
+-- build a left kan extension of F along K, then the functor LanK is the
+-- mapping from all F's to their corresponding left kan extensions along K.
 data LanK k (e :: Type -> Type -> Type) toLan where
   LanK :: (forall f. f -> LeftKanExt k f (toLan f))
        -> LanK k e toLan
+
+--data LeftKanExt k f lan where
+--  Lan :: (Functor lan, Dom lan ~ Cod k, Cod lan ~ Cod f)
+--      => lan
+--      -> f ~> (lan :.: k)
+--      -> LanUP f k lan
+--      -> LeftKanExt k f lan
 
 instance Functor (LanK k e toLan) where
   type Dom (LanK k e toLan) = Nat (Dom k) e
@@ -306,9 +317,30 @@ instance Functor (LanK k e toLan) where
         case mkLan b of
           Lan _ bToLK _ -> up $ bToLK . aToB
 
+--data Precomp e k where
+--  Precomp :: Functor k
+--          => k
+--          -> Precomp e k
 
---precomp :: LeftKanExt k f lan
---        -> Adjunction lan (Precomp () () () k)
+precomp :: LanK k e toLan
+        -> Precomp e k
+        -> Adjunction (LanK k e toLan) (Precomp e k)
+precomp l@(LanK mkLan) preK@(Precomp k) =
+  Adjunction l preK eta epsilon
+    where
+      eta = Nat Identity (Comp preK l) _
+
+      epsilon = Nat (Comp l preK) Identity $ \(Nat f _ c) ->
+        case mkLan (Comp f k) of
+          Lan x nat (LanUP up) -> _
+
+--        case mkLan (Comp f k) of
+--          Lan _ nat (LanUP up) -> _ -- up nat
+--Nat (Cod k) e z z
+--Nat (Cod k) e (toLan (z :.: k)) z
+
+        --case mkLan f of
+          --Lan _ _ _ -> _
 
 --data Adjunction f u where
 --  Adjunction :: (Functor f, Functor u, Dom f ~ c, Cod f ~ d, Dom u ~ d, Cod u ~ c)
