@@ -178,7 +178,8 @@ newtype LanUP f k lan =
         )
 
 data LeftKanExt k f lan where
-  Lan :: lan
+  Lan :: (Functor lan, Dom lan ~ Cod k, Cod lan ~ Cod f)
+      => lan
       -> f ~> (lan :.: k)
       -> LanUP f k lan
       -> LeftKanExt k f lan
@@ -212,7 +213,8 @@ instance Category c => Functor (ConstOne c) where
   type ConstOne c :% a = ()
   ConstOne % _ = One
 
-colimit :: colimit
+colimit :: (Functor colimit, Cod colimit ~ Cod f, Dom colimit ~ One)
+        => colimit
         -> Nat (Dom f) (Cod f) f (colimit :.: ConstOne (Dom f))
         -> LanUP f (ConstOne (Dom f)) colimit
         -> LeftKanExt (ConstOne (Dom f)) f colimit
@@ -288,14 +290,9 @@ product = limit Product mu delta
 -- functor F : C -> E along K exist, then these define left and right adjoints
 -- to the pre-composition functor K* : E^D -> E^C
 
---data LeftKanExt k f lan where
---  Lan :: lan
---      -> f ~> (lan :.: k)
---      -> LanUP f k lan
---      -> LeftKanExt k f lan
-
-newtype LanK k (e :: Type -> Type -> Type) toLan
-  = LanK (forall f. f -> LeftKanExt k f (toLan f))
+data LanK k (e :: Type -> Type -> Type) toLan where
+  LanK :: (forall f. f -> LeftKanExt k f (toLan f))
+       -> LanK k e toLan
 
 instance Functor (LanK k e toLan) where
   type Dom (LanK k e toLan) = Nat (Dom k) e
@@ -303,8 +300,12 @@ instance Functor (LanK k e toLan) where
 
   type LanK k e toLan :% f = toLan f
 
-  LanK mkLan % f = case mkLan f of
-                     Lan lan nat up -> _
+  LanK mkLan % aToB@(Nat a b _) =
+    case mkLan a of
+      Lan _ _ (LanUP up) ->
+        case mkLan b of
+          Lan _ bToLK _ -> up $ bToLK . aToB
+
 
 --precomp :: LeftKanExt k f lan
 --        -> Adjunction lan (Precomp () () () k)
