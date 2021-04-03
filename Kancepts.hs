@@ -82,6 +82,8 @@ class (Category (Dom ftag), Category (Cod ftag)) => Functor ftag where
       -> Dom ftag a b
       -> Cod ftag (ftag :% a) (ftag :% b)
 
+infixr 4 %
+
 -- Functor composition
 data g :.: f =
   Comp g f
@@ -133,13 +135,18 @@ data Nat d c f g where
 
 type f ~> g = (Cod f ~ Cod g, Dom f ~ Dom g) => Nat (Dom f) (Cod f) f g
 
+-- The identity natural transformation
+idNat :: (Functor f, Dom f ~ d, Cod f ~ c)
+      => f -> Nat d c f f
+idNat f = Nat f f (f %)
+
 -- Vertical composition of natural transformations forms a category
 vertComp :: Nat d c g h -> Nat d c f g -> Nat d c f h
 vertComp (Nat _ h n1) (Nat f _ n2) = Nat f h $ \o -> n1 o . n2 o
 
 instance Category (Nat d c) where
-  src (Nat d _ _) = Nat d d (d %)
-  tgt (Nat _ c _) = Nat c c (c %)
+  src (Nat d _ _) = idNat d
+  tgt (Nat _ c _) = idNat c
   (.) = vertComp
 
 whiskerLeft :: (Functor h, Dom h ~ e, Cod h ~ d)
@@ -150,7 +157,7 @@ whiskerRight :: (Functor h, Cod h ~ e, Dom h ~ c)
              => Nat d c f g -> h -> Nat d e (h :.: f) (h :.: g)
 whiskerRight (Nat f g c) h = Nat (Comp h f) (Comp h g) $ \o -> h % c o
 
--- Horizontal composition also forms a category but we can't express it here
+-- Horizontal composition also yields a category but we can't express it here
 horizComp :: Nat c e h i -> Nat d c f g -> Nat d e (h :.: f) (i :.: g)
 horizComp n1@(Nat h _ _) n2@(Nat _ g _) =
   whiskerLeft n1 g . whiskerRight n2 h
@@ -298,13 +305,6 @@ data LanK k (e :: Type -> Type -> Type) toLan where
   LanK :: (forall f. f -> LeftKanExt k f (toLan f))
        -> LanK k e toLan
 
---data LeftKanExt k f lan where
---  Lan :: (Functor lan, Dom lan ~ Cod k, Cod lan ~ Cod f)
---      => lan
---      -> f ~> (lan :.: k)
---      -> LanUP f k lan
---      -> LeftKanExt k f lan
-
 instance Functor (LanK k e toLan) where
   type Dom (LanK k e toLan) = Nat (Dom k) e
   type Cod (LanK k e toLan) = Nat (Cod k) e
@@ -317,40 +317,19 @@ instance Functor (LanK k e toLan) where
         case mkLan b of
           Lan _ bToLK _ -> up $ bToLK . aToB
 
---data Precomp e k where
---  Precomp :: Functor k
---          => k
---          -> Precomp e k
-
-precomp :: LanK k e toLan
+precomp :: Cod k ~ e
+        => LanK k e toLan
         -> Precomp e k
         -> Adjunction (LanK k e toLan) (Precomp e k)
 precomp l@(LanK mkLan) preK@(Precomp k) =
   Adjunction l preK eta epsilon
     where
-      eta = Nat Identity (Comp preK l) _
+      eta = Nat Identity (Comp preK l) $ \(Nat f _ c) ->
+        case mkLan f of
+          Lan _ nat _ -> nat
 
       epsilon = Nat (Comp l preK) Identity $ \(Nat f _ c) ->
         case mkLan (Comp f k) of
-          Lan x nat (LanUP up) -> _
+          Lan _ _ (LanUP up) ->
+            up $ idNat (Comp f k)
 
---        case mkLan (Comp f k) of
---          Lan _ nat (LanUP up) -> _ -- up nat
---Nat (Cod k) e z z
---Nat (Cod k) e (toLan (z :.: k)) z
-
-        --case mkLan f of
-          --Lan _ _ _ -> _
-
---data Adjunction f u where
---  Adjunction :: (Functor f, Functor u, Dom f ~ c, Cod f ~ d, Dom u ~ d, Cod u ~ c)
---             => f -> u
---             -> Nat c c (Identity c) (u :.: f) -- eta
---             -> Nat d d (f :.: u) (Identity d) -- epsilon
---             -> Adjunction f u
---
----- Functor pre-composition
---data Precomp e d c k where
---  Precomp :: (Functor k, Dom k ~ d, Cod k ~ c)
---          => k
---          -> Precomp e d c k
