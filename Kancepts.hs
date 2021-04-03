@@ -200,7 +200,8 @@ newtype RanUP f k ran =
         )
 
 data RightKanExt k f ran where
-  Ran :: ran
+  Ran :: (Functor ran, Dom ran ~ Cod k, Cod ran ~ Cod f)
+      => ran
       -> (ran :.: k) ~> f
       -> RanUP f k ran
       -> RightKanExt k f ran
@@ -264,7 +265,8 @@ coproduct = colimit Coproduct eta sigma
 
 -- Likewise, the right kan extension defines the limit
 
-limit :: limit
+limit :: (Functor limit, Cod limit ~ Cod f, Dom limit ~ One)
+      => limit
       -> Nat (Dom f) (Cod f) (limit :.: ConstOne (Dom f)) f
       -> RanUP f (ConstOne (Dom f)) limit
       -> RightKanExt (ConstOne (Dom f)) f limit
@@ -317,19 +319,56 @@ instance Functor (LanK k e toLan) where
         case mkLan b of
           Lan _ bToLK _ -> up $ bToLK . aToB
 
-precomp :: Cod k ~ e
-        => LanK k e toLan
-        -> Precomp e k
-        -> Adjunction (LanK k e toLan) (Precomp e k)
-precomp l@(LanK mkLan) preK@(Precomp k) =
+leftAdjointToPrecomposition
+  :: (Functor k, Cod k ~ e)
+  => LanK k e toLan
+  -> k
+  -> Adjunction (LanK k e toLan) (Precomp e k)
+leftAdjointToPrecomposition l@(LanK mkLan) k =
   Adjunction l preK eta epsilon
     where
-      eta = Nat Identity (Comp preK l) $ \(Nat f _ c) ->
+      eta = Nat Identity (Comp preK l) $ \(Nat f _ _) ->
         case mkLan f of
           Lan _ nat _ -> nat
 
-      epsilon = Nat (Comp l preK) Identity $ \(Nat f _ c) ->
+      epsilon = Nat (Comp l preK) Identity $ \(Nat f _ _) ->
         case mkLan (Comp f k) of
           Lan _ _ (LanUP up) ->
             up $ idNat (Comp f k)
 
+      preK = Precomp k
+
+data RanK k (e :: Type -> Type -> Type) toRan where
+  RanK :: (forall f. f -> RightKanExt k f (toRan f))
+       -> RanK k e toRan
+
+instance Functor (RanK k e toRan) where
+  type Dom (RanK k e toRan) = Nat (Dom k) e
+  type Cod (RanK k e toRan) = Nat (Cod k) e
+
+  type RanK k e toRan :% f = toRan f
+
+  RanK mkRan % aToB@(Nat a b _) =
+    case mkRan a of
+      Ran _ rkToA _ ->
+        case mkRan b of
+          Ran _ _ (RanUP bUP) -> bUP $ aToB . rkToA
+
+rightAdjointToPrecomposition
+  :: (Functor k, Cod k ~ e)
+  => RanK k e toRan
+  -> k
+  -> Adjunction (Precomp e k) (RanK k e toRan)
+rightAdjointToPrecomposition r@(RanK mkRan) k =
+  Adjunction preK r eta epsilon
+    where
+      eta = Nat Identity (Comp r preK) $ \(Nat f _ _) ->
+        case mkRan (Comp f k) of
+          Ran _ _ (RanUP rUP) ->
+            rUP $ idNat (Comp f k)
+
+      epsilon = Nat (Comp preK r) Identity $ \(Nat f _ _) ->
+        case mkRan f of
+          Ran _ nat _ -> nat
+
+      preK = Precomp k
