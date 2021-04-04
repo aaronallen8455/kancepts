@@ -166,9 +166,12 @@ horizComp n1@(Nat h _ _) n2@(Nat _ g _) =
 -- Adjunction
 --------------------------------------------------------------------------------
 
+-- This formulation of adjunctions is defined by a pair of natural
+-- transformations rather than an isomorphism of hom-sets.
 data Adjunction f u where
   Adjunction :: (Functor f, Functor u, Dom f ~ c, Cod f ~ d, Dom u ~ d, Cod u ~ c)
-             => f -> u
+             => f -- left adjoint functor
+             -> u -- right adjoint functor
              -> Nat c c (Identity c) (u :.: f) -- eta
              -> Nat d d (f :.: u) (Identity d) -- epsilon
              -> Adjunction f u
@@ -180,7 +183,7 @@ data Adjunction f u where
 -- Universal property of left kan extensions. Needs to be a newtype to avoid
 -- impredicative polymorphism errors.
 newtype LanUP f k lan =
-  LanUP (forall g. Functor g
+  LanUP (forall g. (Functor g, Dom g ~ Dom lan, Cod g ~ Cod lan)
       => f ~> (g :.: k)
       -> lan ~> g
         )
@@ -194,7 +197,7 @@ data LeftKanExt k f lan where
 
 -- Universal property of right kan extensions
 newtype RanUP f k ran =
-  RanUP (forall g. Functor g
+  RanUP (forall g. (Functor g, Dom g ~ Dom ran, Cod g ~ Cod ran)
       => (g :.: k) ~> f
       -> g ~> ran
         )
@@ -296,6 +299,10 @@ product = limit Product mu delta
         Nat g Product $ \One z ->
           (c A z, c B z)
 
+--------------------------------------------------------------------------------
+-- Adjunctions of precomposition with K
+--------------------------------------------------------------------------------
+
 -- If, for a fixed K : C -> D and E, the left and right kan extensions of any
 -- functor F : C -> E along K exist, then these define left and right adjoints
 -- to the pre-composition functor K* : E^D -> E^C
@@ -372,3 +379,39 @@ rightAdjointToPrecomposition r@(RanK mkRan) k =
           Ran _ nat _ -> nat
 
       preK = Precomp k
+
+--------------------------------------------------------------------------------
+-- Adjunctions as Kan extensions
+--------------------------------------------------------------------------------
+
+-- If F is left-adjoint to G with unit : 1 => GF and counit : FG => 1, then
+-- (G, unit) is the left kan extension of the identity functor along F, and
+-- (F, counit) is the right kan extension of the identity functor along G.
+-- Conversely, if (G, unit) is a left kan extension of the identity functor
+-- along F and if F preserves this Kan extension then F -| G.
+
+leftKanFromAdjunction :: (Cod g ~ e, Dom f ~ e)
+                      => Adjunction f g
+                      -> LeftKanExt f (Identity e) g
+leftKanFromAdjunction (Adjunction _ g unit counit) =
+  Lan g unit up
+    where
+      up = LanUP $ \(Nat Identity (Comp x _) c1) ->
+        Nat g x $ \o ->
+          case whiskerRight counit x of
+            Nat _ _ c2 ->
+              c2 o . c1 (g % o)
+
+rightKanFromAdjunction :: (Dom g ~ e, Cod f ~ e)
+                       => Adjunction f g
+                       -> RightKanExt g (Identity e) f
+rightKanFromAdjunction (Adjunction f _ unit counit) =
+  Ran f counit up
+    where
+      up = RanUP $ \nat@(Nat (Comp x _) Identity _) ->
+        Nat x f $ \o ->
+          case whiskerRight unit x of
+            Nat _ _ c2 ->
+              case whiskerLeft nat f of
+                Nat _ _ c3 ->
+                  c3 o . c2 o . (x % o)
