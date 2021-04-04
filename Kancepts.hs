@@ -9,6 +9,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 module Kancepts where
 
 import           Data.Kind
@@ -162,6 +163,28 @@ horizComp :: Nat c e h i -> Nat d c f g -> Nat d e (h :.: f) (i :.: g)
 horizComp n1@(Nat h _ _) n2@(Nat _ g _) =
   whiskerLeft n1 g . whiskerRight n2 h
 
+rightUnitNT :: (Functor f, Dom f ~ d, Cod f ~ c)
+            => f
+            -> Nat d c (f :.: Identity d) f
+rightUnitNT f = Nat (Comp f Identity) f (f %)
+
+rightUnitNTInv :: (Functor f, Dom f ~ d, Cod f ~ c)
+               => f
+               -> Nat d c f (f :.: Identity d)
+rightUnitNTInv f = Nat f (Comp f Identity) (f %)
+
+associativeNT :: (Functor f, Functor g, Functor h, Cod h ~ Dom g, Cod g ~ Dom f
+                 , Dom h ~ c, Cod f ~ d
+                 )
+              => f -> g -> h -> Nat c d ((f :.: g) :.: h) (f :.: (g :.: h))
+associativeNT f g h = Nat (Comp (Comp f g) h) (Comp f (Comp g h)) (Comp f (Comp g h) %)
+
+associativeNTInv :: (Functor f, Functor g, Functor h, Cod h ~ Dom g, Cod g ~ Dom f
+                    , Dom h ~ c, Cod f ~ d
+                    )
+                 => f -> g -> h -> Nat c d (f :.: (g :.: h)) ((f :.: g) :.: h)
+associativeNTInv f g h = Nat (Comp f (Comp g h)) (Comp (Comp f g) h) (Comp f (Comp g h) %)
+
 --------------------------------------------------------------------------------
 -- Adjunction
 --------------------------------------------------------------------------------
@@ -172,9 +195,22 @@ data Adjunction f u where
   Adjunction :: (Functor f, Functor u, Dom f ~ c, Cod f ~ d, Dom u ~ d, Cod u ~ c)
              => f -- left adjoint functor
              -> u -- right adjoint functor
-             -> Nat c c (Identity c) (u :.: f) -- eta
-             -> Nat d d (f :.: u) (Identity d) -- epsilon
+             -> Nat c c (Identity c) (u :.: f) -- unit
+             -> Nat d d (f :.: u) (Identity d) -- counit
              -> Adjunction f u
+
+-- Given an adjunction F -| U, U* -| F* where U* is precomposition with U is
+-- also an adjunction.
+precompAdj :: (Cod f ~ c, Dom g ~ c, Dom f ~ Cod g)
+           => Adjunction f u
+           -> Adjunction (Precomp c u) (Precomp c f)
+precompAdj (Adjunction f u unit counit) =
+  Adjunction (Precomp u) (Precomp f) unit' counit'
+    where
+      unit' = Nat Identity (Comp (Precomp f) (Precomp u)) $ \(Nat z _ _) ->
+        associativeNTInv z u f . whiskerRight unit z . rightUnitNTInv z
+      counit' = Nat (Comp (Precomp u) (Precomp f)) Identity $ \(Nat z _ _) ->
+        rightUnitNT z . whiskerRight counit z . associativeNT z f u
 
 --------------------------------------------------------------------------------
 -- Kan Extensions
@@ -402,6 +438,16 @@ leftKanFromAdjunction (Adjunction _ g unit counit) =
             Nat _ _ c2 ->
               c2 o . c1 (g % o)
 
+leftKanToAdjunction :: (Functor f, Cod g ~ e, Dom f ~ e)
+                    => LeftKanExt f (Identity e) g
+                    -> LeftKanExt f f (f :.: g) -- it's preserved by F
+                    -> Adjunction f g
+leftKanToAdjunction (Lan _ unit _)
+                    (Lan (Comp f g) _ (LanUP up)) =
+  Adjunction f g unit counit
+    where
+      counit = up (Nat f (Comp Identity f) (f %))
+
 rightKanFromAdjunction :: (Dom g ~ e, Cod f ~ e)
                        => Adjunction f g
                        -> RightKanExt g (Identity e) f
@@ -415,3 +461,17 @@ rightKanFromAdjunction (Adjunction f _ unit counit) =
               case whiskerLeft nat f of
                 Nat _ _ c3 ->
                   c3 o . c2 o . (x % o)
+
+rightKanToAdjunction :: (Functor g, Dom g ~ e, Cod f ~ e)
+                     => RightKanExt g (Identity e) f
+                     -> RightKanExt g g (g :.: f)
+                     -> Adjunction f g
+rightKanToAdjunction (Ran _ counit _)
+                     (Ran (Comp g f) _ (RanUP up)) =
+  Adjunction f g unit counit
+    where
+      unit = up (Nat (Comp Identity g) g (g %))
+
+--------------------------------------------------------------------------------
+-- Generalization of Yoneda Lemma
+--------------------------------------------------------------------------------
