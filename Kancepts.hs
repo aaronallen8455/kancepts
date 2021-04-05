@@ -10,10 +10,11 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ConstraintKinds #-}
 module Kancepts where
 
 import           Data.Kind
-import           Prelude hiding (Functor, (.))
+import           Prelude hiding ((.), Functor, Monad)
 
 --------------------------------------------------------------------------------
 -- Category
@@ -473,5 +474,19 @@ rightKanToAdjunction (Ran _ counit _)
       unit = up (Nat (Comp Identity g) g (g %))
 
 --------------------------------------------------------------------------------
--- Generalization of Yoneda Lemma
+-- Monads as Kan extensions
 --------------------------------------------------------------------------------
+
+data Monad t where
+  Monad :: Nat c c (Identity c) t
+        -> Nat c c (t :.: t) t
+        -> Monad t
+
+-- The right kan extension of a functor along itself is the codensity monad.
+codensityMonad :: RightKanExt g g t
+               -> Monad t
+codensityMonad (Ran t nat@(Nat _ g _) (RanUP up)) =
+  Monad unit multiply
+    where
+      unit = up $ Nat (Comp Identity g) g (g %)
+      multiply = up $ nat . whiskerRight nat t . associativeNT t t g
